@@ -1,0 +1,297 @@
+/******
+调用的所有库函说明数都写在文档最后了
+需要修改的地方都有中文说明。
+最后那个计算电机实际转速和步进量的公式得改。
+可能有的地方还有隐藏很深的错误，只能等长时间测试才能发现
+******/
+#include <LiquidCrystal.h>
+#include <Stepper.h>
+#define up     1                     //define the keynumber
+#define down   2
+#define right  0
+#define left   3
+#define select 4
+#define steps  200
+
+char msg_mode[3][6]={"slow  ","midd  ","fast  "}; 
+int adc_key_val[5] ={30, 150, 360, 535, 760 };
+int NUM_KEYS = 5;
+int adc_key_in;
+int nnn=1;                             //number of loop
+int key=-1;
+int site=up;
+int select_mode=0;
+int select_freq=4;
+int select_size=4;
+int steps_delay=0;
+int steps_speed=0;
+int steps_move=0;
+
+/////////////////////////////////////////////////////////////////////////////////main
+
+LiquidCrystal lcd(8, 11, 9, 4, 5, 6, 7);   //init the LCD;
+Stepper stepper(steps,  24, 25, 26, 27);    //init the stepper  //修改引脚
+
+void setup()
+{
+   machine_init();  //init the machine;
+}
+ void loop()
+{
+   machine_run(); //start work;
+}
+
+/////////////////////////////////////////////////////////////////////////////function;
+
+ void machine_run()                //start work
+ {
+   lcd.print("select site!");     //adjust the site;
+   stepper.setSpeed(80);
+   adjust_site();
+   delay(1000); //wait 1s
+   
+   lcd.print("!anykey to set!");  //run the default set
+   default_run();
+   
+   firstpage_show();     //show the first selectpage
+   while(1)             //do this while to select the right mode;
+   {
+       delay(150);     //to avoid shake
+       adc_key_in = analogRead(A0);              //read which key was pushed
+       key=get_key(adc_key_in);
+       if(key==up){moveup();}                   //selected move_up when pushed the up
+       if(key==down){movedown();}               //selected move_down when pushed the down
+       if(key==select)                         //do this function when pushed the select
+       {               
+            secondpage_show();               //show the second selectpage
+            while(1)                        //do this while to select right speed
+            {
+                delay(150);
+                adc_key_in = analogRead(A0);
+                key=get_key(adc_key_in);
+                if(key==up){if(select_freq<40){select_freq++;lcd.setCursor(8,0);lcd.print("  ");lcd.setCursor(8,0);lcd.print(select_freq);}} //do + when pushed the up //在此修改最大选择值
+                if(key==down){if(select_freq>0){select_freq--;lcd.setCursor(8,0);lcd.print("  ");lcd.setCursor(8,0);lcd.print(select_freq);}} //do - when pushed the up  //在此修改最小选择值
+                if(key==select)
+                {
+                    thirdpage_show();        //show the third selectpage
+                    while(1)                  //do this while to select right vol；
+                    {
+                        delay(150);
+                        adc_key_in = analogRead(A0);
+                        key=get_key(adc_key_in);
+                        if(key==up){if(select_size<40){select_size++;lcd.setCursor(7,0);lcd.print("    ");lcd.setCursor(7,0);lcd.print(select_size*100);}}      //do + when pushed the up //在此修改最大选择值
+                        if(key==down){if(select_size>0){select_size--;lcd.setCursor(7,0);lcd.print("    ");lcd.setCursor(7,0);lcd.print(select_size*100);}}    //do - when pushed the up//在此修改最小选择值
+                        if(key==select)
+                        {
+                              fourthpage_show();
+                              while(1){motor_control();}
+                        }
+                    }
+                }
+             }
+       }
+   }
+  
+ }
+ /**************
+ * The function to adjust the site;
+ * Author:Aurora
+ * in out 
+ * Time:2016/9/5
+ */
+ void adjust_site()
+{
+  while(1)
+  {
+     adc_key_in = analogRead(A0);  
+     key=get_key(adc_key_in);
+     if(key==up){stepper.step(-10);}
+     if(key==down){stepper.step(10);}
+     if(key==select){lcd.clear();break;}
+  } 
+}
+/**************
+ * The function to run the default set;
+ * Author:Aurora
+ * Time:2016/9/5
+ */
+void default_run()
+{
+   while(1)
+   {
+       if(nnn>0&&nnn<=300)  {stepper.step(10); if(nnn==300){delay(100);}} //在此修改推进长度将10，改为0-20，即可实现推进长度变化，通过修改正负号可以改变转向。
+       if(nnn>300&&nnn<=600){stepper.step(-10);if(nnn==600){delay(100);}} //在此修改推进长度将10，改为0-20，即可实现推进长度变化，通过修改正负号可以改变转向。
+       adc_key_in = analogRead(A0);  
+       key=get_key(adc_key_in);
+       if(key==select||key==up||key==down) {break;}
+       nnn++; if(nnn==601){ nnn=1;}
+    }
+}
+/**************
+ * The function to init the machine;
+ * Author:Aurora
+ * Time:2016/9/5
+ */
+ void  machine_init()
+ {
+ lcd.begin(16,2);
+ lcd.setCursor(4,0);lcd.print("Welcome!");
+ lcd.setCursor(0,1);lcd.print("Basedon  Arduino");
+ delay(3000);
+ lcd.clear();
+ }
+
+/**************
+ * The function to show the select page;
+ * Author:Aurora
+ * Time:2016/9/5
+ */
+void firstpage_show()
+{
+   lcd.clear();
+   lcd.setCursor(0,0); lcd.print("MODE:");
+   lcd.setCursor(8,0); lcd.print("* slow");
+   lcd.setCursor(8,1);lcd.print("  midd");
+}
+void secondpage_show()
+{
+    lcd.clear();
+    lcd.setCursor(0,0);lcd.print("FREQ:");
+    lcd.setCursor(12,0);lcd.print("HZ");
+    lcd.setCursor(0,1);lcd.print(select_mode);
+    lcd.setCursor(8,0);lcd.print(select_freq);
+}
+void thirdpage_show()
+{
+  lcd.clear();
+  lcd.setCursor(0,0); lcd.print("VOLL:");
+  lcd.setCursor(7,0);lcd.print(select_size*100);
+  lcd.setCursor(13,0);lcd.print("mL");
+  lcd.setCursor(0,1);lcd.print(select_mode);
+  lcd.setCursor(3,1);lcd.print(select_freq);
+}
+void fourthpage_show()
+{
+    lcd.clear();             //use these var to control the motor
+    lcd.setCursor(0,0);lcd.print(select_mode);
+    lcd.print("  ");lcd.print(select_freq);
+    lcd.print("  ");lcd.print(select_size*100);
+}
+ /**************
+ * The function to defined how to moveup and movedown;
+ * Author:Aurora
+ * Time:2016/9/5
+ */
+void moveup()
+{
+  if(site==up)
+  {
+   if(select_mode==1){
+    lcd.setCursor(10,0);
+    lcd.print(msg_mode[0]);
+    lcd.setCursor(10,1);
+    lcd.print(msg_mode[1]);
+    select_mode--;}
+  }
+  if(site==down)
+  {
+    lcd.setCursor(8,1); 
+    lcd.print("  ");
+    lcd.setCursor(8,0);
+    lcd.print("* ");
+    select_mode--;
+    site=up;
+  }
+}
+void movedown()
+{
+  if(site==up)
+  {
+    lcd.setCursor(8,0); 
+    lcd.print("  ");
+    lcd.setCursor(8,1);
+    lcd.print("* ");
+    select_mode++;
+    site=down;
+  }
+  else if(site==down)
+  {
+     if(select_mode==1){
+      lcd.setCursor(10,0); 
+      lcd.print(msg_mode[1]);
+      lcd.setCursor(10,1); 
+      lcd.print(msg_mode[2]);
+      select_mode++;}
+   }
+}
+ 
+ /**********************
+ * The function to read the key number;
+ * 0-right 1-up 2-down 3-left 4-select
+ * Author:Aurora
+ * Time:2016/9/5
+ */
+int get_key(unsigned int input)
+{
+        int k;
+        for (k = 0; k < NUM_KEYS; k++)
+        { if (input < adc_key_val[k])
+                {  return k; }
+        }
+       if (k >= NUM_KEYS)
+        k = -1;     // No valid key pressed
+        return k;
+}
+
+ /**************
+ * The function to defined how to control the motor;
+ * Author:Aurora
+ * Time:2016/9/5
+ */
+ void motor_control()
+ {
+   steps_speed=select_freq*2*(1+0.5*select_mode);  //在此修改计算速度的公式
+   steps_move=select_size*100/20;                 //在此修改计算位移量的公式；
+   steps_delay=(steps-steps_move)*15/steps_speed;  //在此修改计算间歇延时的公式
+   lcd.setCursor(0,1); lcd.print(steps_speed);lcd.print("  ");lcd.print(steps_move);lcd.print("  ");lcd.print(steps_delay); //此显示可有可无
+   stepper.setSpeed(steps_speed);         //set speed;
+   while(1)
+   {
+    stepper.step(steps_move);       //set the steps;
+    delay(steps_delay);                //delay
+    stepper.step((-1)*steps_move); //set the steps
+    delay(steps_delay);               //delay
+   }
+ }
+
+/************************************************************************************************
+lcd库的使用：#include <LiquidCrystal.h>
+LiquidCrystal(rs, rw, enable, d4, d5, d6, d7) ；//四位初始化
+lcd.begin(cols, rows)  //指定显示器尺寸（16，2）
+lcd.clear();//清屏；
+lcd.setCursor(col, row) //将光标定位在（）位置；
+lcd.print(data) //data:要显示的数据,可以是char, byte, int, long或者string类型的 
+
+步进电机库的使用：
+步进电机库函数：
+Stepper stepper(steps,  24, 25, 26, 27); //初始化电机，steps=200
+stepper.setSpeed();   //设置电机每分钟转多少圈，范围0-120圈
+stepper.step();  //转过的步数，正是正向，负是反向。
+
+Arduino 基本IO引脚控制函数：
+pinMode(pin,mode);//设置引脚输入输出模式input output;
+digitalWrite(pin,HIGH);//将某个引脚设为高或第LOW
+val=digitalRead(pin); //读引脚是高电平还是低电平
+val = analogRead();//模拟口读入量化电压值0-1023
+analogWrite(pin, val);//模拟口写入量化值0-1023
+delay（10）；//延时10ms
+*********************************************************************************************/
+
+
+
+
+
+
+
+
+
